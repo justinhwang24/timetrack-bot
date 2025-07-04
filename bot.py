@@ -152,7 +152,7 @@ async def settimezone(ctx, tz: str):
     user_timezones[ctx.author.id] = tz
     save_data()
     await ctx.send(f"Timezone set to {tz} for {ctx.author.name}")
-
+    
 @bot.command(help="Log an activity with time and duration.")
 async def log(ctx, hour: int, am_pm: str, minutes: int, *, activity: str):
     am_pm = am_pm.upper()
@@ -177,9 +177,15 @@ async def log(ctx, hour: int, am_pm: str, minutes: int, *, activity: str):
     now_local = datetime.now(user_tz)
     log_date = now_local.date()
 
-    # Build a localized datetime
+    # Build a localized datetime for the log
     naive_dt = datetime.combine(log_date, datetime.min.time()).replace(hour=hour)
     local_dt = user_tz.localize(naive_dt)
+
+    # If the log time is in the future relative to now, shift it back one day
+    if local_dt > now_local:
+        local_dt = local_dt - timedelta(days=1)
+        log_date = local_dt.date()
+
     utc_iso = local_dt.astimezone(pytz.UTC).isoformat()
 
     # Ensure we don’t exceed 60 min in that hour
@@ -209,26 +215,39 @@ async def log(ctx, hour: int, am_pm: str, minutes: int, *, activity: str):
     save_data()
 
     tz_abbr = local_dt.strftime("%Z")
+    log_time_str = local_dt.strftime("%b %-d, %-I %p")
     await ctx.send(
-        f"Logged {minutes} min of '{activity.strip().lower()}' at "
-        f"{hour % 12 or 12} {am_pm} {tz_abbr} for {ctx.author.mention}!"
-    )
+        f"Logged {minutes} min of '{activity.strip().lower()}' at {hour} {am_pm} on {log_date.strftime('%b %-d')}.")
 
-@bot.command(help="Remove logs for a specific hour today.")
+@bot.command(help="Remove logs for a specific hour today or previous day if time is in the future.")
 async def remove(ctx, hour: int, am_pm: str):
     am_pm = am_pm.upper()
     if am_pm not in ("AM", "PM") or not (1 <= hour <= 12):
         await ctx.send("Usage: !remove <hour> <AM|PM>")
         return
 
+    # Convert to 24-hour hour
     if am_pm == "PM" and hour != 12:
-        hour += 12
+        hour_24 = hour + 12
     elif am_pm == "AM" and hour == 12:
-        hour = 0
+        hour_24 = 0
+    else:
+        hour_24 = hour
 
     tz_name = user_timezones.get(ctx.author.id, "America/New_York")
     user_tz = timezone(tz_name)
-    today = datetime.now(user_tz).strftime("%Y-%m-%d")
+    now_local = datetime.now(user_tz)
+    today = now_local.date()
+
+    # Build datetime for the given hour today
+    naive_dt = datetime.combine(today, datetime.min.time()).replace(hour=hour_24)
+    local_dt = user_tz.localize(naive_dt)
+
+    # If the specified hour is in the future, remove logs from previous day
+    if local_dt > now_local:
+        log_date = today - timedelta(days=1)
+    else:
+        log_date = today
 
     global time_logs
     before = len(time_logs)
@@ -237,51 +256,68 @@ async def remove(ctx, hour: int, am_pm: str):
         for e in time_logs
         if not (
             (e.get("user_id") == ctx.author.id or e["user"] == ctx.author.name)
-            and e["date"] == today
-            and datetime.fromisoformat(e["datetime_utc"]).astimezone(user_tz).hour == hour
+            and e["date"] == log_date.isoformat()
+            and datetime.fromisoformat(e["datetime_utc"]).astimezone(user_tz).hour == hour_24
         )
     ]
     removed = before - len(time_logs)
     save_data()
-    await ctx.send(
-        f"Removed {removed} log{'s' if removed != 1 else ''} for "
-        f"{hour % 12 or 12} {am_pm}." if removed else "No logs found to remove."
-    )
 
-@bot.command(help="Show your past logged activities.")
+    if removed:
+        await ctx.send(f"Removed {removed} log{'s' if removed != 1 else ''} for {hour % 12 or 12} {am_pm} on {log_date.strftime('%b %-d')}.")
+    else:
+        await ctx.send("No logs found to remove.")
+        
+@bot.command(help="Show your logged activities for yesterday and today.")
 async def showlog(ctx):
     target = ctx.author
     user_name = target.name
     tz_name = user_timezones.get(target.id, "America/New_York")
     user_tz = timezone(tz_name)
 
+    today_date = datetime.now(user_tz).date()
+    yesterday_date = today_date - timedelta(days=1)
+
     entries = sorted(
         [
             e
             for e in time_logs
-            if e.get("user_id") == target.id or e["user"] == user_name
+            if (e.get("user_id") == target.id or e["user"] == user_name)
+            and datetime.fromisoformat(e["datetime_utc"]).astimezone(user_tz).date() in {today_date, yesterday_date}
         ],
         key=lambda x: x["datetime_utc"],
     )
     if not entries:
-        await ctx.send("No logs found.")
+        await ctx.send("No logs found for today or yesterday.")
         return
 
-    out_lines = []
+    # Group entries by date
+    grouped = {yesterday_date: [], today_date: []}
     for e in entries:
         dt_local = datetime.fromisoformat(e["datetime_utc"]).astimezone(user_tz)
-        ts = dt_local.strftime("%Y-%m-%d at %I:%M %p")
-        out_lines.append(f"{ts} — {e['minutes']} min of {e['activity']}")
+        log_date = dt_local.date()
+        ts = dt_local.strftime("%-I:%M %p")
+        grouped[log_date].append(f"{ts} — {e['minutes']} min of {e['activity']}")
 
-    await ctx.send(f"**Logs for {target.mention}:**\n" + "\n".join(out_lines))
+    msg_lines = []
+    if grouped[yesterday_date]:
+        msg_lines.append(f"**Logs for {target.mention} yesterday:**")
+        msg_lines.extend(grouped[yesterday_date])
+        msg_lines.append("")  # blank line separator
 
+    if grouped[today_date]:
+        msg_lines.append(f"**Logs for {target.mention} today:**")
+        msg_lines.extend(grouped[today_date])
+
+    await ctx.send("\n".join(msg_lines))
+    
 @bot.command(help="Tally your total logged time for today.")
 async def tally(ctx):
     user_id = ctx.author.id
     user_name = ctx.author.name
     tz_name = user_timezones.get(user_id, "America/New_York")
     user_tz = timezone(tz_name)
-    today = datetime.now(user_tz).strftime("%Y-%m-%d")
+    today = datetime.now(user_tz).date().isoformat()
 
     entries = [
         e
@@ -363,26 +399,32 @@ async def h2h(ctx, user1: discord.Member, user2: discord.Member):
     combined_max = max(max(last7_1), max(last7_2), 1)
     start_day = datetime.now(timezone(tz1)).date() - timedelta(days=6)
     graph_lines = []
+    name1 = user1.name[:4].ljust(4)
+    name2 = user2.name[:4].ljust(4)
+    
     for i in range(7):
         d = start_day + timedelta(days=i)
         bar1 = "█" * int(last7_1[i] / combined_max * 10)
         bar2 = "█" * int(last7_2[i] / combined_max * 10)
+        time1 = format_duration(last7_1[i]).rjust(6)
+        time2 = format_duration(last7_2[i]).rjust(6)
         graph_lines.append(
-            f"{d.strftime('%a').ljust(3)} "
-            f"{user1.name[:3].ljust(3)} {bar1:<10} {format_duration(last7_1[i]).rjust(6)} | "
-            f"{user2.name[:3].ljust(3)} {bar2:<10} {format_duration(last7_2[i]).rjust(6)}"
+            f"{d.strftime('%a'):<4}"
+            f"{user1.name[:4].ljust(4)} {bar1:<10} {time1} | "
+            f"{user2.name[:4].ljust(4)} {bar2:<10} {time2}"
         )
 
     msg = (
         f"**⚔️ Head-to-Head: {user1.mention} vs {user2.mention}**\n\n"
-        f"**Today:** {user1.name} {format_duration(t1_today)} | "
-        f"{user2.name} {format_duration(t2_today)}\n"
-        f"**7-day avg:** {user1.name} {format_duration(int(round(t1_avg7)))}/day | "
-        f"{user2.name} {format_duration(int(round(t2_avg7)))}/day\n"
-        f"**30-day avg:** {user1.name} {format_duration(int(round(t1_avg30)))}/day | "
-        f"{user2.name} {format_duration(int(round(t2_avg30)))}/day\n\n"
+        f"Today:      {user1.name.ljust(10)} {format_duration(t1_today).rjust(4)} | "
+        f"{user2.name.ljust(10)} {format_duration(t2_today).rjust(4)}\n"
+        f"7-day avg:  {user1.name.ljust(10)} {format_duration(int(round(t1_avg7))).rjust(4)}/day | "
+        f"{user2.name.ljust(10)} {format_duration(int(round(t2_avg7))).rjust(4)}/day\n"
+        f"30-day avg: {user1.name.ljust(10)} {format_duration(int(round(t1_avg30))).rjust(4)}/day | "
+        f"{user2.name.ljust(10)} {format_duration(int(round(t2_avg30))).rjust(4)}/day\n\n"
         f"**Progress (last 7 days):**\n" + "\n".join(graph_lines)
     )
+    
     await ctx.send(msg)
 
 # ────────────────────────────
