@@ -217,7 +217,7 @@ async def log(ctx, hour: int, am_pm: str, minutes: int, *, activity: str):
     tz_abbr = local_dt.strftime("%Z")
     log_time_str = local_dt.strftime("%b %-d, %-I %p")
     await ctx.send(
-        f"Logged {minutes} min of '{activity.strip().lower()}' at {hour} {am_pm} on {log_date.strftime('%b %-d')}.")
+        f"Logged {minutes} min of '{activity.strip().lower()}' at {hour % 12 or 12} {am_pm} on {log_date.strftime('%b %-d')}.")
 
 @bot.command(help="Remove logs for a specific hour today or previous day if time is in the future.")
 async def remove(ctx, hour: int, am_pm: str):
