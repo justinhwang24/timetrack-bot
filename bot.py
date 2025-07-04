@@ -366,8 +366,8 @@ async def stats(ctx, target: discord.Member = None):
     msg = (
         f"**📊 Stats for {target.mention}:**\n"
         f"Today: {format_duration(today)}\n"
-        f"7-day avg: {format_duration(int(round(avg7)))} / day\n"
-        f"30-day avg: {format_duration(int(round(avg30)))} / day\n\n"
+        f"7-day avg: {format_duration(int(round(avg7)))}\n"
+        f"30-day avg: {format_duration(int(round(avg30)))}\n\n"
         f"**Top activities (last 30 days):**\n"
     )
     for act, mins in top_acts.items():
@@ -408,20 +408,26 @@ async def h2h(ctx, user1: discord.Member, user2: discord.Member):
         bar2 = "█" * int(last7_2[i] / combined_max * 10)
         time1 = format_duration(last7_1[i]).rjust(6)
         time2 = format_duration(last7_2[i]).rjust(6)
+        user1Name = user1.name[:4].ljust(4)
+        user2Name = user2.name[:4].ljust(4)
+        if time1 > time2:
+            user1Name = f"**{user1Name}**"
+        if time2 > time1:
+            user2Name = f"**{user2Name}**"
         graph_lines.append(
-            f"{d.strftime('%a'):<4}"
-            f"{user1.name[:4].ljust(4)} {bar1:<10} {time1} | "
-            f"{user2.name[:4].ljust(4)} {bar2:<10} {time2}"
+            f"{d.strftime('%a'):<4}: "
+            f"{user1Name} {bar1:<10} {time1} | "
+            f"{user2Name} {bar2:<10} {time2}"
         )
 
     msg = (
         f"**⚔️ Head-to-Head: {user1.mention} vs {user2.mention}**\n\n"
         f"Today:      {user1.name.ljust(10)} {format_duration(t1_today).rjust(4)} | "
         f"{user2.name.ljust(10)} {format_duration(t2_today).rjust(4)}\n"
-        f"7-day avg:  {user1.name.ljust(10)} {format_duration(int(round(t1_avg7))).rjust(4)}/day | "
-        f"{user2.name.ljust(10)} {format_duration(int(round(t2_avg7))).rjust(4)}/day\n"
-        f"30-day avg: {user1.name.ljust(10)} {format_duration(int(round(t1_avg30))).rjust(4)}/day | "
-        f"{user2.name.ljust(10)} {format_duration(int(round(t2_avg30))).rjust(4)}/day\n\n"
+        f"7-day avg:  {user1.name.ljust(10)} {format_duration(int(round(t1_avg7))).rjust(4)} | "
+        f"{user2.name.ljust(10)} {format_duration(int(round(t2_avg7))).rjust(4)}\n"
+        f"30-day avg: {user1.name.ljust(10)} {format_duration(int(round(t1_avg30))).rjust(4)} | "
+        f"{user2.name.ljust(10)} {format_duration(int(round(t2_avg30))).rjust(4)}\n\n"
         f"**Progress (last 7 days):**\n" + "\n".join(graph_lines)
     )
     
