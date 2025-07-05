@@ -410,9 +410,9 @@ async def h2h(ctx, user1: discord.Member, user2: discord.Member):
         time2 = format_duration(last7_2[i]).rjust(6)
         user1Name = user1.name[:4].ljust(4)
         user2Name = user2.name[:4].ljust(4)
-        if time1 > time2:
+        if last7_1[i] >= last7_2[i]:
             user1Name = f"**{user1Name}**"
-        if time2 > time1:
+        if last7_2[i] >= last7_1[i]:
             user2Name = f"**{user2Name}**"
         graph_lines.append(
             f"{d.strftime('%a'):<4}: "
