@@ -42,8 +42,8 @@ A Discord bot to help users log daily activities, view their productivity stats,
 |---------------------|-------------|
 | `!help`             | List all commands |
 | `!settimezone <tz>` | Set your timezone (e.g., `America/New_York`) |
-| `!log <hour> <AM|PM> <minutes> <activity>` | Log an activity at a certain time |
-| `!remove <hour> <AM|PM>` | Remove logs for a specific hour |
+| `!log <hour> <AM\|PM> <minutes> <activity>` | Log an activity at a certain time |
+| `!remove <hour> <AM\|PM>` | Remove logs for a specific hour |
 | `!showlog`          | Show today's and yesterday's logs |
 | `!tally`            | Show a breakdown of today's activities |
 | `!stats [@user]`    | Show detailed stats and graph (optional mention) |
